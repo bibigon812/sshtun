@@ -2,6 +2,7 @@ package sshtun
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os/exec"
 	"time"
@@ -45,22 +46,45 @@ func createSshTunnel(
 		"-o",
 		"ServerAliveCountMax 3",
 		"-o",
-		"ConnectTimeout 5",
+		"ConnectTimeout 2",
 	)
-
 	var err error
 
-	err = cmd.Start()
-	if err == nil {
-		pid = &cmd.Process.Pid
-		running <- *pid
-		err = cmd.Wait()
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		log.Fatal(err)
 	}
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = cmd.Start()
+
+	if err != nil {
+		panic(
+			fmt.Sprintf(
+				"process could not start: %s",
+				err,
+			),
+		)
+	}
+
+	pid = &cmd.Process.Pid
+	running <- *pid
+
+	sErr, _ := io.ReadAll(stderr)
+	sOut, _ := io.ReadAll(stdout)
+
+	err = cmd.Wait()
 
 	panic(
 		fmt.Sprintf(
-			"process %d has been terminated: %s",
+			"process %d has been terminated: %s, %s, %s",
 			*pid,
+			sOut,
+			sErr,
 			err,
 		),
 	)
@@ -70,7 +94,7 @@ func addLocalAddresses(
 	iface string,
 	addresses []string,
 ) (string, error) {
-	for {
+	for range 10 {
 		cmd := exec.Command("ip", "link", "show", iface)
 		if err := cmd.Run(); err == nil {
 			break
@@ -112,6 +136,8 @@ func addRemoteAddresses(
 			username,
 			"-p",
 			fmt.Sprintf("%d", port),
+			"-o",
+			"ConnectTimeout 2",
 			fmt.Sprintf("ip addr add %s dev %s", address, iface),
 		)
 		if out, err := cmd.CombinedOutput(); err != nil {
@@ -170,6 +196,7 @@ func Create(
 				localAddresses,
 			); err != nil {
 				log.Printf("error: %s, output: %s", err, out)
+				continue
 			}
 
 			if out, err := addRemoteAddresses(
@@ -180,10 +207,12 @@ func Create(
 				remoteAddresses,
 			); err != nil {
 				log.Printf("error: %s, output: %s", err, out)
+				continue
 			}
 
 		case p := <-failed:
 			log.Printf("ssh tunnel with pid %d failed", p)
+
 			go createSshTunnel(
 				hostname,
 				username,
