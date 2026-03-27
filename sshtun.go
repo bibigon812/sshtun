@@ -46,7 +46,7 @@ func createSshTunnel(
 		"-o",
 		"ServerAliveCountMax 3",
 		"-o",
-		"ConnectTimeout 2",
+		"ConnectTimeout 5",
 	)
 	var err error
 
@@ -137,7 +137,7 @@ func addRemoteAddresses(
 			"-p",
 			fmt.Sprintf("%d", port),
 			"-o",
-			"ConnectTimeout 2",
+			"ConnectTimeout 5",
 			fmt.Sprintf("ip addr add %s dev %s", address, iface),
 		)
 		if out, err := cmd.CombinedOutput(); err != nil {
@@ -191,20 +191,20 @@ func Create(
 		case p := <-running:
 			log.Printf("ssh tunnel with pid %d started", p)
 
-			if out, err := addLocalAddresses(
-				iface,
-				localAddresses,
-			); err != nil {
-				log.Printf("error: %s, output: %s", err, out)
-				continue
-			}
-
 			if out, err := addRemoteAddresses(
 				hostname,
 				username,
 				port,
 				iface,
 				remoteAddresses,
+			); err != nil {
+				log.Printf("error: %s, output: %s", err, out)
+				continue
+			}
+
+			if out, err := addLocalAddresses(
+				iface,
+				localAddresses,
 			); err != nil {
 				log.Printf("error: %s, output: %s", err, out)
 				continue
